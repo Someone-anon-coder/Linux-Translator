@@ -1,0 +1,10 @@
+# Image Processing & UI
+opencv-python
+Pillow
+PyQt6
+numpy
+
+# OCR & AI
+pytesseract
+ultralytics         # For the YOLO-like detection
+requests            # To talk to the local LibreTranslate API
