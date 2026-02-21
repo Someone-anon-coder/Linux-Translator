@@ -1,4 +1,7 @@
 debug_output/*
+yolov8m.pt
+yolov8n.pt
+yolov8s.pt
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
