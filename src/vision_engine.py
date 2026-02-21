@@ -1,49 +1,56 @@
 import cv2
-from ultralytics import YOLO
+import numpy as np
 import os
-
-# Initialize the model (YOLOv8 Nano is used here as a base)
-# In a production environment, you would use a model fine-tuned for text
-model = YOLO('yolov8n.pt') 
 
 def detect_text_regions(image_path):
     """
-    Analyzes an image and returns a list of bounding boxes where text/objects are found.
+    Uses Image Processing to locate 'islands' of text.
+    Acts as our YOLO-like localization engine.
     """
-    results = model(image_path, conf=0.25, verbose=False) # 25% confidence threshold
+    # 1. Load image and convert to grayscale
+    img = cv2.imread(image_path)
+    if img is None:
+        return []
+    
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+    # 2. Binary Thresholding (makes text black and background white)
+    # This helps in isolating the characters
+    thresh = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
+                                   cv2.THRESH_BINARY_INV, 11, 8)
+
+    # 3. Dilate the text to join nearby parts of a single character
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+    dilate = cv2.dilate(thresh, kernel, iterations=1)
+
+    # 4. Find Contours (the 'boxes' around pixel islands)
+    contours, _ = cv2.findContours(dilate, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     
     bboxes = []
-    # Extract coordinates from results
-    for result in results:
-        for box in result.boxes:
-            # Get coordinates: x1, y1, x2, y2
-            coords = box.xyxy[0].tolist()
-            bboxes.append([int(c) for c in coords])
+    for cnt in contours:
+        x, y, w, h = cv2.boundingRect(cnt)
+        # Filter out tiny noise (dots/specs) and huge boxes (the whole screen)
+        if w > 5 and h > 5:
+            bboxes.append([x, y, x + w, y + h])
             
     return bboxes
 
 if __name__ == "__main__":
-    print("--- Vision Engine Test ---")
+    print("--- Vision Engine (V2) Test ---")
     input_img = "debug_output/capture_test.png"
     
     if not os.path.exists(input_img):
-        print(f"Error: {input_img} not found. Run Step 4 first.")
+        print(f"Error: {input_img} not found.")
     else:
-        # 1. Detect boxes
         boxes = detect_text_regions(input_img)
         print(f"Detected {len(boxes)} potential text regions.")
         
-        # 2. Visualize for verification
         img = cv2.imread(input_img)
         for box in boxes:
             x1, y1, x2, y2 = box
-            # Draw a bright green rectangle around detected regions
-            cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0), 2)
+            cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0), 1)
         
-        # 3. VERIFIABLE OUTPUT: Save the visual proof
         output_path = "debug_output/detection_test.png"
         cv2.imwrite(output_path, img)
-        
-        print(f"BBox Coordinates: {boxes}")
         print(f"Verification image saved to: {output_path}")
     print("--- Test Finished ---")
