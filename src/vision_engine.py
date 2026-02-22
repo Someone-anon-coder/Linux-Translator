@@ -1,49 +1,53 @@
 import cv2
-from ultralytics import YOLO
+import easyocr
+import numpy as np
 import os
 
-# Initialize the model (YOLOv8 Nano is used here as a base)
-# In a production environment, you would use a model fine-tuned for text
-model = YOLO('yolov8n.pt') 
+# Initialize the EasyOCR Reader
+# This will download the CRAFT detection model on first run (~100MB)
+# We include 'ja' and 'en' to help the model recognize both scripts
+reader = easyocr.Reader(['ja', 'en'], gpu=False, model_storage_directory='models', download_enabled=True)  # Set gpu=True if you have a compatible GPU and want faster processing
 
-def detect_text_regions(image_path):
+def get_text_bboxes(image_path):
     """
-    Analyzes an image and returns a list of bounding boxes where text/objects are found.
+    Uses CRAFT (via EasyOCR) to find text regions.
+    Returns boxes as [x_min, y_min, width, height]
     """
-    results = model(image_path, conf=0.25, verbose=False) # 25% confidence threshold
+    # detect() returns: (horizontal_boxes, free_form_boxes)
+    # We focus on horizontal_boxes for most standard text
+    img = cv2.imread(image_path)
+    result = reader.detect(img)
     
-    bboxes = []
-    # Extract coordinates from results
-    for result in results:
-        for box in result.boxes:
-            # Get coordinates: x1, y1, x2, y2
-            coords = box.xyxy[0].tolist()
-            bboxes.append([int(c) for c in coords])
+    horizontal_boxes = result[0][0] # List of [x_min, x_max, y_min, y_max]
+    
+    refined_boxes = []
+    for box in horizontal_boxes:
+        x_min, x_max, y_min, y_max = box
+        # Convert to standard [x, y, w, h] format
+        refined_boxes.append([x_min, y_min, x_max - x_min, y_max - y_min])
             
-    return bboxes
+    return refined_boxes
 
 if __name__ == "__main__":
-    print("--- Vision Engine Test ---")
-    input_img = "debug_output/capture_test.png"
+    print("--- CRAFT Vision Engine Test ---")
+    input_img = "debug_output/japanese_text.png"
     
     if not os.path.exists(input_img):
-        print(f"Error: {input_img} not found. Run Step 4 first.")
+        print(f"Error: Run Step 4/5 capture first.")
     else:
-        # 1. Detect boxes
-        boxes = detect_text_regions(input_img)
-        print(f"Detected {len(boxes)} potential text regions.")
+        # 1. Run CRAFT Detection
+        boxes = get_text_bboxes(input_img)
+        print(f"CRAFT detected {len(boxes)} logical text regions.")
         
-        # 2. Visualize for verification
+        # 2. Visualize
         img = cv2.imread(input_img)
-        for box in boxes:
-            x1, y1, x2, y2 = box
-            # Draw a bright green rectangle around detected regions
-            cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0), 2)
+        for (x, y, w, h) in boxes:
+            cv2.rectangle(img, (x, y), (x + w, y + h), (255, 0, 0), 2) # Blue boxes for CRAFT
         
-        # 3. VERIFIABLE OUTPUT: Save the visual proof
-        output_path = "debug_output/detection_test.png"
+        # 3. VERIFIABLE OUTPUT
+        output_path = "debug_output/craft_detection_test.png"
         cv2.imwrite(output_path, img)
         
-        print(f"BBox Coordinates: {boxes}")
+        print(f"Sample BBox [X, Y, W, H]: {boxes[0] if boxes else 'None'}")
         print(f"Verification image saved to: {output_path}")
     print("--- Test Finished ---")
