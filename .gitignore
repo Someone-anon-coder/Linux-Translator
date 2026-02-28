@@ -1,7 +1,8 @@
 debug_output/*
-models/*
+models/*.pth
 db/sessions/*
 images/*
+assets/*.png
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
