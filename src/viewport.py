@@ -81,7 +81,8 @@ class ViewportWindow(QWidget):
                 font.setPointSize(12)
             painter.setFont(font)
             
-            painter.drawText(rect, Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.TextWordWrap, text)
+            # Use TextFlag.TextWordWrap (not AlignmentFlag) to wrap long translations
+            painter.drawText(rect, Qt.AlignmentFlag.AlignCenter | Qt.TextFlag.TextWordWrap, text)
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:

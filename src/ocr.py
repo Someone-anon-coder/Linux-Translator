@@ -3,23 +3,19 @@ from PyQt6.QtCore import QObject, pyqtSlot, pyqtSignal
 from translator import LocalTranslator
 
 class OCRProcessor(QObject):
-    # NEW: Signal to send the final structured data back to the UI thread
     data_processed = pyqtSignal(list)
+    finished = pyqtSignal() # NEW: Signal to say "I'm ready for the next frame"
 
     def __init__(self):
         super().__init__()
-        self.is_processing = False
-        self.translator = LocalTranslator() # Initialize our cached translator
+        self.translator = LocalTranslator()
 
     @pyqtSlot(object)
     def process_frame(self, frame):
-        if self.is_processing:
-            return
-        self.is_processing = True
-        
         try:
-            # Using your updated lang='jpn'
-            data = pytesseract.image_to_data(frame, output_type=pytesseract.Output.DICT, lang='jpn')
+            # lang='jpn' for Japanese, or 'eng' for English depending on your test
+            data = pytesseract.image_to_data(frame, output_type=pytesseract.Output.DICT, lang='eng+jpn')
+            
             blocks = {}
             n_boxes = len(data['text'])
             
@@ -41,33 +37,31 @@ class OCRProcessor(QObject):
                         blocks[block_id]['x_max'] = max(blocks[block_id]['x_max'], x+w)
                         blocks[block_id]['y_max'] = max(blocks[block_id]['y_max'], y+h)
 
-            final_data =[]
+            final_data = []
             for b_id, b_data in blocks.items():
-                # Join without spaces for Japanese
-                sentence = "".join(b_data['words'])
+                # Use " " for English, "" for Japanese. 
+                # Ideally, detect language or just use " " as a generic separator
+                sentence = " ".join(b_data['words'])
                 
                 final_x = b_data['x_min'] // 2
                 final_y = b_data['y_min'] // 2
                 final_w = (b_data['x_max'] - b_data['x_min']) // 2
                 final_h = (b_data['y_max'] - b_data['y_min']) // 2
                 
-                # TRANSLATE THE SENTENCE
-                translated = self.translator.translate(sentence, source_lang="ja", target_lang="en")
+                translated = self.translator.translate(sentence, source_lang="auto", target_lang="en")
                 
-                # Package everything neatly
                 box_info = {
                     'coords': (final_x, final_y, final_w, final_h),
                     'original': sentence,
                     'translated': translated
                 }
                 final_data.append(box_info)
-                
-                print(f"[PIPELINE] Original: '{sentence[:15]}...' -> Translated: '{translated[:20]}...'")
+                print(f"[PIPELINE] '{sentence[:10]}...' -> '{translated[:10]}...'")
             
-            # Emit the fully processed list
             self.data_processed.emit(final_data)
                 
         except Exception as e:
-            print(f"[ERROR] OCR/Translation pipeline failed: {e}")
+            print(f"[ERROR] OCR failed: {e}")
         finally:
-            self.is_processing = False
+            # ALWAYS tell the capture thread we are done
+            self.finished.emit()
