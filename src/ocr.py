@@ -1,77 +1,73 @@
 import pytesseract
-from PyQt6.QtCore import QObject, pyqtSlot
+from PyQt6.QtCore import QObject, pyqtSlot, pyqtSignal
+from translator import LocalTranslator
 
 class OCRProcessor(QObject):
+    # NEW: Signal to send the final structured data back to the UI thread
+    data_processed = pyqtSignal(list)
+
     def __init__(self):
         super().__init__()
-        # Lock to prevent stacking OCR tasks if the capture thread sends frames too quickly
         self.is_processing = False
+        self.translator = LocalTranslator() # Initialize our cached translator
 
     @pyqtSlot(object)
     def process_frame(self, frame):
-        # If we are already running OCR, ignore the new frame to save CPU
         if self.is_processing:
             return
-            
         self.is_processing = True
         
         try:
-            # 1. Run Tesseract to extract data dictionaries (includes text, conf, and coords)
-            data = pytesseract.image_to_data(frame, output_type=pytesseract.Output.DICT)
-            
+            # Using your updated lang='jpn'
+            data = pytesseract.image_to_data(frame, output_type=pytesseract.Output.DICT, lang='jpn')
             blocks = {}
             n_boxes = len(data['text'])
             
-            # 2. Iterate through all detected items
             for i in range(n_boxes):
                 text = data['text'][i].strip()
-                # Tesseract occasionally returns empty strings or low confidence noise
-                try:
-                    conf = int(data['conf'][i])
-                except ValueError:
-                    conf = 0
+                try: conf = int(data['conf'][i])
+                except ValueError: conf = 0
                 
                 if text and conf > 30:
-                    # 3. Create a unique ID for the sentence based on layout hierarchy
                     block_id = (data['block_num'][i], data['par_num'][i], data['line_num'][i])
+                    x, y, w, h = data['left'][i], data['top'][i], data['width'][i], data['height'][i]
                     
-                    x = data['left'][i]
-                    y = data['top'][i]
-                    w = data['width'][i]
-                    h = data['height'][i]
-                    
-                    # 4. Group words into the same sentence block and expand the bounding box
                     if block_id not in blocks:
-                        blocks[block_id] = {
-                            'words': [text],
-                            'x_min': x,
-                            'y_min': y,
-                            'x_max': x + w,
-                            'y_max': y + h
-                        }
+                        blocks[block_id] = {'words': [text], 'x_min': x, 'y_min': y, 'x_max': x+w, 'y_max': y+h}
                     else:
                         blocks[block_id]['words'].append(text)
                         blocks[block_id]['x_min'] = min(blocks[block_id]['x_min'], x)
                         blocks[block_id]['y_min'] = min(blocks[block_id]['y_min'], y)
-                        blocks[block_id]['x_max'] = max(blocks[block_id]['x_max'], x + w)
-                        blocks[block_id]['y_max'] = max(blocks[block_id]['y_max'], y + h)
+                        blocks[block_id]['x_max'] = max(blocks[block_id]['x_max'], x+w)
+                        blocks[block_id]['y_max'] = max(blocks[block_id]['y_max'], y+h)
 
-            # 5. Process the grouped blocks
+            final_data =[]
             for b_id, b_data in blocks.items():
-                sentence = " ".join(b_data['words'])
+                # Join without spaces for Japanese
+                sentence = "".join(b_data['words'])
                 
-                # 6. CRITICAL: Divide coordinates by 2 to map back to the UI!
-                # (Because we used cv2.resize(fx=2, fy=2) in capture.py)
                 final_x = b_data['x_min'] // 2
                 final_y = b_data['y_min'] // 2
                 final_w = (b_data['x_max'] - b_data['x_min']) // 2
                 final_h = (b_data['y_max'] - b_data['y_min']) // 2
                 
-                # 7. Print the grouped sentence and its relative UI coordinates
-                print(f"[OCR DETECTED] Context: '{sentence}' | Coords: X:{final_x:04d} Y:{final_y:04d} W:{final_w:04d} H:{final_h:04d}")
+                # TRANSLATE THE SENTENCE
+                translated = self.translator.translate(sentence, source_lang="ja", target_lang="en")
+                
+                # Package everything neatly
+                box_info = {
+                    'coords': (final_x, final_y, final_w, final_h),
+                    'original': sentence,
+                    'translated': translated
+                }
+                final_data.append(box_info)
+                
+                print(f"[PIPELINE] Original: '{sentence[:15]}...' -> Translated: '{translated[:20]}...'")
+            
+            # Emit the fully processed list
+            self.data_processed.emit(final_data)
                 
         except Exception as e:
-            print(f"[ERROR] OCR processing failed: {e}")
+            print(f"[ERROR] OCR/Translation pipeline failed: {e}")
         finally:
-            # Release the lock so the next frame can be processed
             self.is_processing = False

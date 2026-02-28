@@ -5,31 +5,31 @@ from viewport import ViewportWindow
 from capture import CaptureThread
 from ocr import OCRProcessor
 
+def handle_final_data(data_list):
+    """Temporary function to verify data reaches the main thread."""
+    if data_list:
+        print(f"[SYSTEM SUCCESS] Received {len(data_list)} text blocks ready for rendering.")
+
 def main():
     print("=== STARTING ON-SCREEN TRANSLATOR ===")
     app = QApplication(sys.argv)
     
-    # 1. Initialize Viewport
     window = ViewportWindow()
     window.show()
     
-    # 2. Initialize Background Workers
     capture_thread = CaptureThread(window)
     ocr_processor = OCRProcessor()
     
-    # 3. Connect the captured frame signal directly to the OCR processor slot
+    # Connect signals
     capture_thread.frame_processed.connect(ocr_processor.process_frame)
+    # NEW: Connect the final packaged data to our print function
+    ocr_processor.data_processed.connect(handle_final_data)
     
-    # 4. Start Capture Thread
     capture_thread.start()
     
-    # 5. Allow graceful exit on Ctrl+C
     signal.signal(signal.SIGINT, signal.SIG_DFL)
-    
-    # 6. Execute GUI Loop
     exit_code = app.exec()
     
-    # 7. Cleanup
     capture_thread.stop()
     sys.exit(exit_code)
 
