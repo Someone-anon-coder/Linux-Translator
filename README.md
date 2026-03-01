@@ -144,7 +144,7 @@ A translucent overlay window will appear on your screen, ready to capture and tr
 ┌─────────────────────────────────────┐
 │     Main Thread (UI / PyQt6)        │
 │  • Manages ViewportWindow           │
-│  • Receives mouse drag/resize input  │
+│  • Receives mouse drag/resize input │
 │  • Draws translated overlay         │
 │  • Emits frame_captured signal      │
 └────────────────┬────────────────────┘
@@ -154,7 +154,7 @@ A translucent overlay window will appear on your screen, ready to capture and tr
 │   Worker Thread (OCR/Translation)   │
 │  • Awaits frame_captured signal     │
 │  • Performs Tesseract OCR           │
-│  • Groups words by spatial layout    │
+│  • Groups words by spatial layout   │
 │  • Calls LibreTranslate             │
 │  • Emits finished signal            │
 └─────────────────────────────────────┘
